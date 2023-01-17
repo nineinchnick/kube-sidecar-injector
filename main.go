@@ -15,7 +15,7 @@ import (
 
 var (
 	parameters                           WhSvrParameters
-	webhookNamespace, webhookServiceName string
+	webhookNamespace, webhookServiceName, webhookLabelSelector string
 )
 
 func init() {
@@ -25,9 +25,10 @@ func init() {
 
 func main() {
 	// init command flags
-	flag.IntVar(&parameters.port, "port", 443, "Webhook server port.")
+	flag.IntVar(&parameters.port, "port", 8443, "Webhook server port.")
 	flag.StringVar(&webhookServiceName, "service-name", "sidecar-injector", "Webhook service name.")
 	flag.StringVar(&parameters.sidecarCfgFile, "sidecar-config-file", "/etc/webhook/config/sidecarconfig.yaml", "Sidecar injector configuration file.")
+	flag.StringVar(&webhookLabelSelector, "label-selector", "sidecar-injector=enabled", "Namespace label selector for the mutating webhook.")
 	// flag.StringVar(&parameters.certFile, "tlsCertFile", "/etc/webhook/certs/cert.pem", "File containing the x509 Certificate for HTTPS.")
 	// flag.StringVar(&parameters.keyFile, "tlsKeyFile", "/etc/webhook/certs/key.pem", "File containing the x509 private key to --tlsCertFile.")
 	flag.Parse()
@@ -39,7 +40,7 @@ func main() {
 	}
 	commonName := webhookServiceName + "." + webhookNamespace + ".svc"
 
-	org := "morven.me"
+	org := "was.net.pl"
 	caPEM, certPEM, certKeyPEM, err := generateCert([]string{org}, dnsNames, commonName)
 	if err != nil {
 		glog.Fatalf("Failed to generate ca and certificate key pair: %v", err)
@@ -62,7 +63,7 @@ func main() {
 	}
 
 	// create or update the mutatingwebhookconfiguration
-	err = createOrUpdateMutatingWebhookConfiguration(caPEM, webhookServiceName, webhookNamespace)
+	err = createOrUpdateMutatingWebhookConfiguration(caPEM, webhookServiceName, webhookNamespace, webhookLabelSelector)
 	if err != nil {
 		glog.Fatalf("Failed to create or update the mutating webhook configuration: %v", err)
 	}

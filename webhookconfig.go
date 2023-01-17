@@ -19,7 +19,7 @@ var (
 	webhookInjectPath = "/inject"
 )
 
-func createOrUpdateMutatingWebhookConfiguration(caPEM *bytes.Buffer, webhookService, webhookNamespace string) error {
+func createOrUpdateMutatingWebhookConfiguration(caPEM *bytes.Buffer, webhookService, webhookNamespace, webhookLabelSelector string) error {
 	glog.Info("Initializing the kube client...")
 
 	kubeconfig := os.Getenv("KUBECONFIG")
@@ -31,9 +31,12 @@ func createOrUpdateMutatingWebhookConfiguration(caPEM *bytes.Buffer, webhookServ
 	if err != nil {
 		return err
 	}
+	namespaceSelector, err := metav1.ParseToLabelSelector(webhookLabelSelector)
+	if err != nil {
+		return err
+	}
 	mutatingWebhookConfigV1Client := clientset.AdmissionregistrationV1()
 
-	glog.Infof("Creating or updating the mutatingwebhookconfiguration: %s", webhookConfigName)
 	fail := admissionregistrationv1.Fail
 	sideEffect := admissionregistrationv1.SideEffectClassNone
 	mutatingWebhookConfig := &admissionregistrationv1.MutatingWebhookConfiguration{
@@ -41,7 +44,7 @@ func createOrUpdateMutatingWebhookConfiguration(caPEM *bytes.Buffer, webhookServ
 			Name: webhookConfigName,
 		},
 		Webhooks: []admissionregistrationv1.MutatingWebhook{{
-			Name:                    "sidecar-injector.morven.me",
+			Name:                    "sidecar-injector.was.net.pl",
 			AdmissionReviewVersions: []string{"v1", "v1beta1"},
 			SideEffects:             &sideEffect,
 			ClientConfig: admissionregistrationv1.WebhookClientConfig{
@@ -65,14 +68,11 @@ func createOrUpdateMutatingWebhookConfiguration(caPEM *bytes.Buffer, webhookServ
 					},
 				},
 			},
-			NamespaceSelector: &metav1.LabelSelector{
-				MatchLabels: map[string]string{
-					"sidecar-injection": "enabled",
-				},
-			},
-			FailurePolicy: &fail,
+			NamespaceSelector: namespaceSelector,
+			FailurePolicy:     &fail,
 		}},
 	}
+	glog.Infof("Creating or updating the mutatingwebhookconfiguration: %s: %+v", webhookConfigName, mutatingWebhookConfig)
 
 	foundWebhookConfig, err := mutatingWebhookConfigV1Client.MutatingWebhookConfigurations().Get(context.TODO(), webhookConfigName, metav1.GetOptions{})
 	if err != nil && apierrors.IsNotFound(err) {
