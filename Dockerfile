@@ -11,7 +11,7 @@ RUN go mod download
 COPY ./ src/
 
 RUN cd src \
-    && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -a -o sidecar-injector .
+    && CGO_ENABLED=0 go build -a -o sidecar-injector .
 
 
 FROM alpine:latest
@@ -26,4 +26,4 @@ ADD ./prestop.sh .
 
 USER 65532:65532
 
-ENTRYPOINT ["./kube-sidecar-injector"]
+ENTRYPOINT ["./sidecar-injector"]
