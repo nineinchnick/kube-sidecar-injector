@@ -1,13 +1,8 @@
 #!/bin/bash
 
-: ${DOCKER_USER:? required}
+set -euo pipefail
 
-export GO111MODULE=on 
-export GOPROXY=https://goproxy.cn
-# build webhook
-CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o admission-webhook-example 
+: "${DOCKER_USER:? required}"
+
 # build docker image
-docker build --no-cache -t ${DOCKER_USER}/admission-webhook-example:v1 .
-rm -rf admission-webhook-example
-
-docker push ${DOCKER_USER}/admission-webhook-example:v1
+docker buildx build --no-cache --platform linux/arm64,linux/amd64 --push -t ${DOCKER_USER}/kube-sidecar-injector:v1 .

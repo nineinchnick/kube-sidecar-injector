@@ -13,21 +13,62 @@ import (
 	"github.com/golang/glog"
 )
 
-func main() {
-	var parameters WhSvrParameters
+var (
+	parameters                           WhSvrParameters
+	webhookNamespace, webhookServiceName string
+)
 
-	// get command line parameters
+func init() {
+	// webhook server running namespace
+	webhookNamespace = os.Getenv("POD_NAMESPACE")
+}
+
+func main() {
+	// init command flags
 	flag.IntVar(&parameters.port, "port", 443, "Webhook server port.")
-	flag.StringVar(&parameters.certFile, "tlsCertFile", "/etc/webhook/certs/cert.pem", "File containing the x509 Certificate for HTTPS.")
-	flag.StringVar(&parameters.keyFile, "tlsKeyFile", "/etc/webhook/certs/key.pem", "File containing the x509 private key to --tlsCertFile.")
+	flag.StringVar(&webhookServiceName, "service-name", "sidecar-injector", "Webhook service name.")
+	flag.StringVar(&parameters.sidecarCfgFile, "sidecar-config-file", "/etc/webhook/config/sidecarconfig.yaml", "Sidecar injector configuration file.")
+	// flag.StringVar(&parameters.certFile, "tlsCertFile", "/etc/webhook/certs/cert.pem", "File containing the x509 Certificate for HTTPS.")
+	// flag.StringVar(&parameters.keyFile, "tlsKeyFile", "/etc/webhook/certs/key.pem", "File containing the x509 private key to --tlsCertFile.")
 	flag.Parse()
 
-	pair, err := tls.LoadX509KeyPair(parameters.certFile, parameters.keyFile)
+	dnsNames := []string{
+		webhookServiceName,
+		webhookServiceName + "." + webhookNamespace,
+		webhookServiceName + "." + webhookNamespace + ".svc",
+	}
+	commonName := webhookServiceName + "." + webhookNamespace + ".svc"
+
+	org := "morven.me"
+	caPEM, certPEM, certKeyPEM, err := generateCert([]string{org}, dnsNames, commonName)
 	if err != nil {
-		glog.Errorf("Failed to load key pair: %v", err)
+		glog.Fatalf("Failed to generate ca and certificate key pair: %v", err)
+	}
+
+	pair, err := tls.X509KeyPair(certPEM.Bytes(), certKeyPEM.Bytes())
+	if err != nil {
+		glog.Fatalf("Failed to load certificate key pair: %v", err)
+	}
+	/*
+		pair, err := tls.LoadX509KeyPair(parameters.certFile, parameters.keyFile)
+		if err != nil {
+			glog.Errorf("Failed to load key pair: %v", err)
+		}
+	*/
+
+	sidecarConfig, err := loadConfig(parameters.sidecarCfgFile)
+	if err != nil {
+		glog.Fatalf("Failed to load configuration: %v", err)
+	}
+
+	// create or update the mutatingwebhookconfiguration
+	err = createOrUpdateMutatingWebhookConfiguration(caPEM, webhookServiceName, webhookNamespace)
+	if err != nil {
+		glog.Fatalf("Failed to create or update the mutating webhook configuration: %v", err)
 	}
 
 	whsvr := &WebhookServer{
+		sidecarConfig: sidecarConfig,
 		server: &http.Server{
 			Addr:      fmt.Sprintf(":%v", parameters.port),
 			TLSConfig: &tls.Config{Certificates: []tls.Certificate{pair}},
@@ -36,14 +77,13 @@ func main() {
 
 	// define http server and server handler
 	mux := http.NewServeMux()
-	mux.HandleFunc("/mutate", whsvr.serve)
-	mux.HandleFunc("/validate", whsvr.serve)
+	mux.HandleFunc(webhookInjectPath, whsvr.serve)
 	whsvr.server.Handler = mux
 
 	// start webhook server in new routine
 	go func() {
 		if err := whsvr.server.ListenAndServeTLS("", ""); err != nil {
-			glog.Errorf("Failed to listen and serve webhook server: %v", err)
+			glog.Fatalf("Failed to listen and serve webhook server: %v", err)
 		}
 	}()
 

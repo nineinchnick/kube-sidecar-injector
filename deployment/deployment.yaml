@@ -1,35 +1,43 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: admission-webhook-example-deployment
+  name: sidecar-injector
   labels:
-    app: admission-webhook-example
+    app: sidecar-injector
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: admission-webhook-example
+      app: sidecar-injector
   template:
     metadata:
       labels:
-        app: admission-webhook-example
+        app: sidecar-injector
     spec:
-      serviceAccount: admission-webhook-example-sa
+      serviceAccountName: sidecar-injector
       containers:
-        - name: admission-webhook-example
-          image: cnych/admission-webhook-example:v1
+        - name: sidecar-injector
+          image: sidecar-injector
           imagePullPolicy: Always
           args:
-            - -tlsCertFile=/etc/webhook/certs/cert.pem
-            - -tlsKeyFile=/etc/webhook/certs/key.pem
-            - -alsologtostderr
-            - -v=4
-            - 2>&1
+          - -service-name=sidecar-injector
+          - -sidecar-config-file=/etc/webhook/config/sidecarconfig.yaml
+          - -alsologtostderr
+          - -v=4
+          env:
+          - name: POD_NAMESPACE
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.namespace
+          lifecycle:
+            preStop:
+              exec:
+                command: ["/bin/sh", "-c", "/prestop.sh"]
           volumeMounts:
-            - name: webhook-certs
-              mountPath: /etc/webhook/certs
-              readOnly: true
+          - name: webhook-config
+            mountPath: /etc/webhook/config
+            readOnly: true
       volumes:
-        - name: webhook-certs
-          secret:
-            secretName: admission-webhook-example-certs
+      - name: webhook-config
+        configMap:
+          name: sidecar-injector
