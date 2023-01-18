@@ -9,8 +9,8 @@ import (
 	"os"
 	"strings"
 
+	"github.com/goccy/go-yaml"
 	"github.com/golang/glog"
-	"gopkg.in/yaml.v2"
 	admissionv1 "k8s.io/api/admission/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -71,6 +71,7 @@ func loadConfig(configFile string) (*Config, error) {
 	if err := yaml.Unmarshal(data, &cfg); err != nil {
 		return nil, err
 	}
+	glog.Infof("Decoded configuration: %+v", cfg)
 
 	return &cfg, nil
 }
